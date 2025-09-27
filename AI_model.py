@@ -36,12 +36,41 @@ class TestGenerator:
         self.test_equipment = test_equipment
     @staticmethod
     def generate_resp(prompt:str,model:str ="deepseek/deepseek-chat-v3.1:free") -> Optional[str|None]:
-        client = OpenAI(base_url="https://openrouter.ai/api/v1",api_key = api_key)
-
-        completion = client.chat.completions.create(extra_body={}, model="deepseek/deepseek-chat-v3.1:free",
-        messages=[{"role": "user","content": prompt}]
-        )
-        return completion.choices[0].message.content
+        import time
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+                completion = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return completion.choices[0].message.content
+                
+            except Exception as e:
+                error_str = str(e)
+                print(f"API Error (attempt {attempt + 1}): {error_str}")
+                
+                if "401" in error_str or "unauthorized" in error_str.lower():
+                    print("❌ API Key expired/invalid. Solutions:")
+                    print("1. Get new key: https://openrouter.ai/keys")
+                    print("2. Check account credits")
+                    return None
+                elif "429" in error_str:
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt
+                        print(f"Rate limited. Waiting {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                elif "quota" in error_str.lower():
+                    print("❌ Quota exceeded. Add credits to OpenRouter.")
+                    return None
+                
+                if attempt == max_retries - 1:
+                    return None
+        
+        return None
     @staticmethod
     def get_LORA_test(bom_components, test_points,reqs) -> Optional[str|None]:
         LORA_pr = f"""You are an expert RF test engineer. Generate a comprehensive test procedure for a LoRa train communication radio.
