@@ -15,7 +15,7 @@ except ImportError:
     PDF_SUPPORT = False
 
 try:
-    from docx import Document
+    from docx import Document  # type: ignore
     DOCX_SUPPORT = True
 except ImportError:
     DOCX_SUPPORT = False
@@ -99,12 +99,14 @@ class BOMParser:
         try:
             workbook = openpyxl.load_workbook(file_path)
             sheet = workbook.active
+            if sheet is None:
+                return components
             
             # Assume first row is headers
             headers = [cell.value for cell in sheet[1]]
             
             for row in sheet.iter_rows(min_row=2, values_only=True):
-                if row[0]:  # Skip empty rows
+                if row and len(row) > 0 and row[0]:  # Skip empty rows
                     comp = Component(
                         designator=str(row[0]) if row[0] else "",
                         part_number=str(row[1]) if len(row) > 1 and row[1] else "",
@@ -112,7 +114,7 @@ class BOMParser:
                         quantity=int(row[3]) if len(row) > 3 and isinstance(row[3], (int, float)) else 1,
                         description=str(row[4]) if len(row) > 4 and row[4] else "",
                         value=str(row[5]) if len(row) > 5 and row[5] else "",
-                        test_priority=self._assess_component_priority(str(row[0]) if row[0] else "", 
+                        test_priority=self._assess_component_priority(str(row[0]) if len(row) > 0 and row[0] else "", 
                                                                     str(row[1]) if len(row) > 1 and row[1] else "")
                     )
                     components.append(comp)
@@ -149,12 +151,20 @@ class BOMParser:
             
             # Look for common XML BOM structures
             for item in root.findall('.//component') or root.findall('.//item') or root.findall('.//part'):
-                designator = item.get('designator') or item.get('ref') or item.find('designator')
-                if designator is not None:
-                    designator = designator.text if hasattr(designator, 'text') else str(designator)
+                designator_elem = item.get('designator') or item.get('ref') or item.find('designator')
+                if designator_elem is not None:
+                    if isinstance(designator_elem, str):
+                        designator = designator_elem
+                    else:
+                        designator = designator_elem.text if designator_elem.text else ""
                     
-                    part_number = item.get('partnumber') or item.find('partnumber')
-                    part_number = part_number.text if hasattr(part_number, 'text') else str(part_number) if part_number else ""
+                    part_number_elem = item.get('partnumber') or item.find('partnumber')
+                    part_number = ""
+                    if part_number_elem is not None:
+                        if isinstance(part_number_elem, str):
+                            part_number = part_number_elem
+                        else:
+                            part_number = part_number_elem.text if part_number_elem.text else ""
                     
                     comp = Component(
                         designator=designator,
@@ -176,7 +186,10 @@ class BOMParser:
         for tag in tag_names:
             value = element.get(tag) or element.find(tag)
             if value is not None:
-                return value.text if hasattr(value, 'text') else str(value)
+                if isinstance(value, str):
+                    return value
+                else:
+                    return value.text if value.text else ""
         return ""
 
     def _parse_csv_bom(self, content: str) -> List[Component]:
