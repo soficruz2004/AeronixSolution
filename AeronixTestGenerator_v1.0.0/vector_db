@@ -1,0 +1,144 @@
+# vector_db.py
+from pinecone import Pinecone, ServerlessSpec
+from sentence_transformers import SentenceTransformer
+from typing import List, Dict, Any, Optional
+import os
+import hashlib
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class PineconeTestManager:
+    def __init__(self):
+        self.api_key = os.getenv("PINECONE_API_KEY")
+        self.environment = os.getenv("PINECONE_ENVIRONMENT", "us-east4-gcp")
+        self.index_name = "aeronix-test-plans"
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        
+        if not self.api_key:
+            raise ValueError("PINECONE_API_KEY not found in environment variables")
+        
+        # Initialize Pinecone with new API
+        self.pc = Pinecone(api_key=self.api_key)
+        self.setup_index()
+
+    def setup_index(self):
+        """Create or connect to Pinecone index"""
+        existing_indexes = [index.name for index in self.pc.list_indexes()]
+        
+        if self.index_name not in existing_indexes:
+            # Create new index with serverless spec
+            self.pc.create_index(
+                name=self.index_name,
+                dimension=384,  # all-MiniLM-L6-v2 output dimension
+                metric="cosine",
+                spec=ServerlessSpec(
+                    cloud="aws",
+                    region=self.environment
+                )
+            )
+        
+        self.index = self.pc.Index(self.index_name)
+
+    def generate_embedding(self, text: str) -> List[float]:
+        """Generate vector embedding for text"""
+        return self.model.encode(text).tolist()
+
+    def store_test_plan(self, test_plan: Dict, metadata: Dict = {}) -> str:
+        """Store a test plan in Pinecone"""
+        
+        # Combine test plan content for embedding
+        content = f"""
+        Title: {test_plan.get('title', '')}
+        Device: {test_plan.get('target_device', '')}
+        Steps: {len(test_plan.get('test_steps', []))}
+        Overview: {test_plan.get('overview', '')}
+        """
+        
+        # Add test steps details
+        for i, step in enumerate(test_plan.get('test_steps', [])):
+            content += f"Step {i}: {step.get('title', '')} - {step.get('description', '')} "
+        
+        # Generate embedding
+        vector = self.generate_embedding(content)
+        
+        # Create unique ID
+        plan_id = hashlib.md5(content.encode()).hexdigest()
+        
+        # Prepare metadata
+        metadata.update({
+            'title': test_plan.get('title', ''),
+            'device': test_plan.get('target_device', ''),
+            'step_count': len(test_plan.get('test_steps', [])),
+            'type': test_plan.get('type', 'unknown')
+        })
+        
+        # Store in Pinecone
+        self.index.upsert(vectors=[(plan_id, vector, metadata)])
+        return plan_id
+
+    def search_similar_tests(self, query: str, top_k: int = 5) -> List[Dict]:
+        """Search for similar test plans"""
+        try:
+            query_vector = self.generate_embedding(query)
+            
+            results = self.index.query(
+                vector=query_vector,
+                top_k=top_k,
+                include_metadata=True
+            )
+            
+            # Debug: Print results structure
+            print(f"Results type: {type(results)}")
+            print(f"Results dir: {dir(results)}")
+            
+            # Try different ways to access matches
+            matches = []
+            if hasattr(results, 'matches'):
+                matches = results.matches
+            elif isinstance(results, dict) and 'matches' in results:
+                matches = results['matches']
+            else:
+                print(f"Unknown results format: {results}")
+                return []
+            
+            processed_matches = []
+            for match in matches:
+                try:
+                    # Extract match data safely
+                    match_id = match.id if hasattr(match, 'id') else match.get('id', '')
+                    match_score = match.score if hasattr(match, 'score') else match.get('score', 0.0)
+                    match_metadata = match.metadata if hasattr(match, 'metadata') else match.get('metadata', {})
+                    
+                    processed_matches.append({
+                        'id': match_id,
+                        'score': match_score,
+                        'metadata': match_metadata,
+                        'title': match_metadata.get('title', ''),
+                        'device': match_metadata.get('device', ''),
+                        'step_count': match_metadata.get('step_count', 0)
+                    })
+                except Exception as e:
+                    print(f"Error processing match: {e}")
+                    continue
+            
+            return processed_matches
+            
+        except Exception as e:
+            print(f"Error in search_similar_tests: {e}")
+            return []
+
+def test_pinecone_connection():
+    """Test function to verify Pinecone setup"""
+    try:
+        manager = PineconeTestManager()
+        print("✅ Pinecone connection successful!")
+        print(f"✅ Index: {manager.index_name}")
+        print(f"✅ Model loaded: {type(manager.model).__name__}")
+        return True
+    except Exception as e:
+        print(f"❌ Pinecone connection failed: {e}")
+        return False
+
+if __name__ == "__main__":
+    test_pinecone_connection()

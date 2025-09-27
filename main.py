@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Aeronix PCB Test Generator - Main Entry Point
 Team solution to Aeronix's 2025 PCB Testing Hackathon

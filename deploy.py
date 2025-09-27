@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deployment package creator for Aeronix Test Generator"""
 
 import os
@@ -183,9 +182,9 @@ venv/
         print("Creating installation package...")
         
         try:
-            package_dir = f"{self.project_name}_v{self.version}"
-            if os.path.exists(package_dir):
-                shutil.rmtree(package_dir)
+            package_dir = f"pcbprocessor/{self.project_name}_v{self.version}"
+            if os.path.exists("pcbprocessor"):
+                shutil.rmtree("pcbprocessor")
             os.makedirs(package_dir)
             
             files_to_copy = [
@@ -277,7 +276,7 @@ pause
                 f.write(windows_script)
             
             # Create ZIP package
-            zip_filename = f"{package_dir}.zip"
+            zip_filename = f"pcbprocessor/{self.project_name}_v{self.version}.zip"
             with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for root, dirs, files in os.walk(package_dir):
                     for file in files:
@@ -285,16 +284,16 @@ pause
                         arcname = os.path.relpath(file_path, package_dir)
                         zipf.write(file_path, arcname)
             
-            print(f"✅ Installation package created: {zip_filename}")
+            print(f"Installation package created: {zip_filename}")
             return zip_filename
             
         except Exception as e:
-            print(f"❌ Package creation failed: {e}")
+            print(f"Package creation failed: {e}")
             return None
     
     def create_documentation(self):
         """Create deployment documentation"""
-        print("📚 Creating documentation...")
+        print("Creating documentation...")
         
         readme_content = f'''# Aeronix Test Generator v{self.version}
 
