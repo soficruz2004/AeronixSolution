@@ -252,7 +252,8 @@ class TestGeneratorUI:
         
         def generate():
             try:
-                self.update_status("Generating LoRa test...")
+                # Update status on main thread
+                self.root.after(0, lambda: self.update_status("Generating LoRa test..."))
                 
                 bom_components = self.parsed_data.get('bom_components', [])
                 test_points = self.parsed_data.get('test_points', [])
@@ -260,19 +261,27 @@ class TestGeneratorUI:
                 
                 result = TestGenerator.get_LORA_test(bom_components, test_points, requirements)
                 
-                if result:
-                    self.current_results['lora'] = result
-                    self.lora_text.delete(1.0, tk.END)
-                    self.lora_text.insert(1.0, result)
-                    self.update_status("LoRa test generated successfully")
-                else:
-                    error_msg = "Unknown error"
-                    messagebox.showerror("Generation Error", f"LoRa test generation failed: {error_msg}")
-                    self.update_status("LoRa test generation failed")
+                # Update UI on main thread
+                def update_ui():
+                    if result:
+                        self.current_results['lora'] = result
+                        self.lora_text.delete(1.0, tk.END)
+                        self.lora_text.insert(1.0, result)
+                        self.update_status("LoRa test generated successfully")
+                    else:
+                        messagebox.showerror("Generation Error", "LoRa test generation failed")
+                        self.update_status("LoRa test generation failed")
+                
+                self.root.after(0, update_ui)
                     
             except Exception as e:
-                messagebox.showerror("Error", f"LoRa test generation error: {str(e)}")
-                self.update_status("LoRa test generation error")
+                # Handle errors on main thread
+                error_msg = str(e)
+                def show_error():
+                    messagebox.showerror("Error", f"LoRa test generation error: {error_msg}")
+                    self.update_status("LoRa test generation error")
+                
+                self.root.after(0, show_error)
         
         # Run in thread to avoid blocking UI
         thread = threading.Thread(target=generate)
@@ -287,26 +296,35 @@ class TestGeneratorUI:
         
         def generate():
             try:
-                self.update_status("Generating Arduino test...")
+                # Update status on main thread
+                self.root.after(0, lambda: self.update_status("Generating Arduino test..."))
                 
                 bom_components = self.parsed_data.get('bom_components', [])
                 test_points = self.parsed_data.get('test_points', [])
                 
                 result = TestGenerator.get_arduino_test(bom_components, test_points)
                 
-                if result:
-                    self.current_results['arduino'] = result
-                    self.arduino_text.delete(1.0, tk.END)
-                    self.arduino_text.insert(1.0, result)
-                    self.update_status("Arduino test generated successfully")
-                else:
-                    error_msg = "Unknown error"
-                    messagebox.showerror("Generation Error", f"Arduino test generation failed: {error_msg}")
-                    self.update_status("Arduino test generation failed")
+                # Update UI on main thread
+                def update_ui():
+                    if result:
+                        self.current_results['arduino'] = result
+                        self.arduino_text.delete(1.0, tk.END)
+                        self.arduino_text.insert(1.0, result)
+                        self.update_status("Arduino test generated successfully")
+                    else:
+                        messagebox.showerror("Generation Error", "Arduino test generation failed")
+                        self.update_status("Arduino test generation failed")
+                
+                self.root.after(0, update_ui)
                     
             except Exception as e:
-                messagebox.showerror("Error", f"Arduino test generation error: {str(e)}")
-                self.update_status("Arduino test generation error")
+                # Handle errors on main thread
+                error_msg = str(e)
+                def show_error():
+                    messagebox.showerror("Error", f"Arduino test generation error: {error_msg}")
+                    self.update_status("Arduino test generation error")
+                
+                self.root.after(0, show_error)
         
         # Run in thread to avoid blocking UI
         thread = threading.Thread(target=generate)

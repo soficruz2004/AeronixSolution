@@ -45,6 +45,7 @@ class TestGenerator:
     @staticmethod
     def get_LORA_test(bom_components, test_points,reqs) -> Optional[str|None]:
         LORA_pr = f"""You are an expert RF test engineer. Generate a comprehensive test procedure for a LoRa train communication radio.
+                    Do not add formatting, ONLY provide a clear and concise response with NO preceeding acknowledgement.
                     COMPONENTS:
                     {str(bom_components)[:1348]}
                     TEST POINTS:
@@ -70,6 +71,7 @@ class TestGenerator:
     @staticmethod
     def get_arduino_test(bom_components,test_points) -> Optional[str|None]:
         ard_pr = f"""Generate Arduino Uno test procedure covering:
+                Do not add formatting, ONLY provide a clear and concise response with NO preceeding acknowledgement.
                 1. Power rails (5V ±0.25V, 3.3V ±0.165V)
                 2. Digital I/O (D0-D13, PWM capability)
                 3. Analog inputs (A0-A5, 10-bit ADC)
