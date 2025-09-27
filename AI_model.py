@@ -35,8 +35,8 @@ class TestGenerator:
         self.LORA_test = self.get_LORA_test(bom_components, test_points, reqs)
         self.arduino_test = self.get_arduino_test(bom_components, test_points)
         self.test_equipment = test_equipment
-
-    def generate_resp(self,prompt:str,model:str ="deepseek/deepseek-chat-v3.1:free") -> Optional[str|None]:
+    @staticmethod
+    def generate_resp(prompt:str,model:str ="deepseek/deepseek-chat-v3.1:free") -> Optional[str|None]:
         client = OpenAI(api_key=api_key,base_url = "https://openrouter.ai/api/v1")
         repsonse = client.chat.completions.create(
             model=model,
@@ -47,8 +47,8 @@ class TestGenerator:
             stream = False
         )
         return repsonse.choices[0].message.content
-
-    def get_LORA_test(self,bom_components, test_points,reqs) -> Optional[str|None]:
+    @staticmethod
+    def get_LORA_test(bom_components, test_points,reqs) -> Optional[str|None]:
         LORA_pr = f"""You are an expert RF test engineer. Generate a comprehensive test procedure for a LoRa train communication radio.
                     COMPONENTS:
                     {str(bom_components)[:1348]}
@@ -71,9 +71,9 @@ class TestGenerator:
                     5. Equipment: [Required tools]
                     6. Points: [Test points to probe]
                     """
-        return self.generate_resp(LORA_pr)
-
-    def get_arduino_test(self,bom_components,test_points) -> Optional[str|None]:
+        return TestGenerator.generate_resp(LORA_pr)
+    @staticmethod
+    def get_arduino_test(bom_components,test_points) -> Optional[str|None]:
         ard_pr = f"""Generate Arduino Uno test procedure covering:
                 1. Power rails (5V ±0.25V, 3.3V ±0.165V)
                 2. Digital I/O (D0-D13, PWM capability)
@@ -84,7 +84,7 @@ class TestGenerator:
                 Components: {str(bom_components)[:1500]}
                 Test Points: {str(test_points)[:548]}
                 """
-        return self.generate_resp(ard_pr)
+        return TestGenerator.generate_resp(ard_pr)
 
     def parse_ai_response(self,response_text: Optional[str|None]) -> Optional[list[Any]|None]:
         test_steps = []

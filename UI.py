@@ -5,6 +5,7 @@ import json
 from typing import List, Dict, Any, Optional
 import threading
 from enum import Enum
+from AI_model import TestGenerator
 
 # Import your modules
 try:
@@ -257,15 +258,15 @@ class TestGeneratorUI:
                 test_points = self.parsed_data.get('test_points', [])
                 requirements = self.parsed_data.get('requirements', {})
                 
-                result = AI_model.get_LORA_test(bom_components, test_points, requirements)
+                result = TestGenerator.get_LORA_test(bom_components, test_points, requirements)
                 
-                if result.result == AI_model.TestGenerationResult.SUCCESS:
-                    self.current_results['lora'] = result.data
+                if result:
+                    self.current_results['lora'] = result
                     self.lora_text.delete(1.0, tk.END)
-                    self.lora_text.insert(1.0, result.data)
+                    self.lora_text.insert(1.0, result)
                     self.update_status("LoRa test generated successfully")
                 else:
-                    error_msg = result.error or "Unknown error"
+                    error_msg = "Unknown error"
                     messagebox.showerror("Generation Error", f"LoRa test generation failed: {error_msg}")
                     self.update_status("LoRa test generation failed")
                     
@@ -291,15 +292,15 @@ class TestGeneratorUI:
                 bom_components = self.parsed_data.get('bom_components', [])
                 test_points = self.parsed_data.get('test_points', [])
                 
-                result = AI_model.get_arduino_test(bom_components, test_points)
+                result = TestGenerator.get_arduino_test(bom_components, test_points)
                 
-                if result.result == AI_model.TestGenerationResult.SUCCESS:
-                    self.current_results['arduino'] = result.data
+                if result:
+                    self.current_results['arduino'] = result
                     self.arduino_text.delete(1.0, tk.END)
-                    self.arduino_text.insert(1.0, result.data)
+                    self.arduino_text.insert(1.0, result)
                     self.update_status("Arduino test generated successfully")
                 else:
-                    error_msg = result.error or "Unknown error"
+                    error_msg = "Unknown error"
                     messagebox.showerror("Generation Error", f"Arduino test generation failed: {error_msg}")
                     self.update_status("Arduino test generation failed")
                     
