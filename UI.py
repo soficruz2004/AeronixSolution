@@ -137,11 +137,18 @@ class TestGeneratorUI:
             files = filedialog.askopenfilenames(
                 title="Select files to process",
                 filetypes=[
-                    ("All supported", "*.ipc *.csv *.txt *.json *.xml *.sch *.docx *.md"),
+                    ("All supported", "*.BomDoc *.SchDoc *.PrjPcb *.PcbDoc *.csv *.txt *.json *.xml *.pdf *.docx *.md *.ipc"),
+                    ("Altium BOM", "*.BomDoc"),
+                    ("Altium Schematic", "*.SchDoc"),
+                    ("Altium Project", "*.PrjPcb"),
+                    ("Altium PCB", "*.PcbDoc"),
                     ("CSV files", "*.csv"),
-                    ("IPC files", "*.ipc"),
+                    ("PDF files", "*.pdf"),
+                    ("Word documents", "*.docx"),
                     ("Text files", "*.txt"),
                     ("JSON files", "*.json"),
+                    ("XML files", "*.xml"),
+                    ("IPC files", "*.ipc"),
                     ("All files", "*.*")
                 ]
             )
@@ -183,13 +190,33 @@ class TestGeneratorUI:
             files_for_parsing = []
             for file_path in self.loaded_files:
                 try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        content = f.read()
+                    # Handle different file types
+                    file_ext = os.path.splitext(file_path)[1].lower()
                     
-                    files_for_parsing.append({
-                        'path': file_path,
-                        'content': content
-                    })
+                    if file_ext in ['.bomdoc', '.schdoc', '.pcbdoc', '.prjpcb']:
+                        # Altium files - binary format, needs special handling
+                        files_for_parsing.append({
+                            'path': file_path,
+                            'content': f"ALTIUM_FILE:{file_ext}",  # Placeholder
+                            'type': 'ALTIUM_BINARY'
+                        })
+                    elif file_ext == '.pdf':
+                        # PDF files need special handling
+                        files_for_parsing.append({
+                            'path': file_path,
+                            'content': "PDF_FILE",  # Placeholder
+                            'type': 'PDF'
+                        })
+                    else:
+                        # Text-based files
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                        
+                        files_for_parsing.append({
+                            'path': file_path,
+                            'content': content,
+                            'type': 'TEXT'
+                        })
                 except Exception as e:
                     print(f"Error reading {file_path}: {e}")
             
@@ -199,8 +226,14 @@ class TestGeneratorUI:
                 # Update info display
                 bom_count = len(self.parsed_data.get('bom_components', []))
                 tp_count = len(self.parsed_data.get('test_points', []))
+                file_types = self.parsed_data.get('metadata', {}).get('file_types', {})
                 
                 info_text = f"Parsed: {bom_count} BOM components, {tp_count} test points"
+                if file_types:
+                    altium_count = sum(1 for ft in file_types.values() if 'ALTIUM' in str(ft))
+                    if altium_count > 0:
+                        info_text += f", {altium_count} Altium files detected"
+                
                 self.parse_info_label.config(text=info_text)
                 self.update_status("Files parsed successfully")
             else:
@@ -224,9 +257,9 @@ class TestGeneratorUI:
                 test_points = self.parsed_data.get('test_points', [])
                 requirements = self.parsed_data.get('requirements', {})
                 
-                result = get_LORA_test(bom_components, test_points, requirements)
+                result = AI_model.get_LORA_test(bom_components, test_points, requirements)
                 
-                if result.result == TestGenerationResult.SUCCESS:
+                if result.result == AI_model.TestGenerationResult.SUCCESS:
                     self.current_results['lora'] = result.data
                     self.lora_text.delete(1.0, tk.END)
                     self.lora_text.insert(1.0, result.data)
@@ -258,9 +291,9 @@ class TestGeneratorUI:
                 bom_components = self.parsed_data.get('bom_components', [])
                 test_points = self.parsed_data.get('test_points', [])
                 
-                result = get_arduino_test(bom_components, test_points)
+                result = AI_model.get_arduino_test(bom_components, test_points)
                 
-                if result.result == TestGenerationResult.SUCCESS:
+                if result.result == AI_model.TestGenerationResult.SUCCESS:
                     self.current_results['arduino'] = result.data
                     self.arduino_text.delete(1.0, tk.END)
                     self.arduino_text.insert(1.0, result.data)
