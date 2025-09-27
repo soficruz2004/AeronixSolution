@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-global api_key
 api_key = os.getenv("API_KEY")
 class TestGenerator:
     # Implement user input for these later
@@ -37,16 +36,12 @@ class TestGenerator:
         self.test_equipment = test_equipment
     @staticmethod
     def generate_resp(prompt:str,model:str ="deepseek/deepseek-chat-v3.1:free") -> Optional[str|None]:
-        client = OpenAI(api_key=api_key,base_url = "https://openrouter.ai/api/v1")
-        repsonse = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            stream = False
+        client = OpenAI(base_url="https://openrouter.ai/api/v1",api_key = api_key)
+
+        completion = client.chat.completions.create(extra_body={}, model="deepseek/deepseek-chat-v3.1:free",
+        messages=[{"role": "user","content": prompt}]
         )
-        return repsonse.choices[0].message.content
+        return completion.choices[0].message.content
     @staticmethod
     def get_LORA_test(bom_components, test_points,reqs) -> Optional[str|None]:
         LORA_pr = f"""You are an expert RF test engineer. Generate a comprehensive test procedure for a LoRa train communication radio.
