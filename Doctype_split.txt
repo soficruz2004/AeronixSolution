@@ -1,2 +1,0 @@
-BomDoc: Split using |RECORD=PartChoiceGroups|GROUPBYFIELDCOUNT=0 , get first line, ignore rest
-SchDocs: Use Altium, convert to json, parse
