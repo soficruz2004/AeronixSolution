@@ -112,3 +112,34 @@ class TestGenerator:
                     test_steps.append(current_step)
                 
                 return test_steps
+    def build_test_context(self,data):
+        context = {
+            'component_count': len(data['bom_components']),
+            'critical_components': [c for c in data['bom_components'] 
+                                if c.test_priority == 'HIGH'],
+            'test_point_count': len(data['test_points']),
+            'power_components': [c for c in data['bom_components'] 
+                                if 'POWER' in c.part_number.upper()],
+            'rf_components': [c for c in data['bom_components'] 
+                            if any(rf in c.part_number.upper() 
+                                for rf in ['RF', 'LORA', 'ANTENNA'])]
+        }
+        return context
+    def optimize_prompt(self,data):
+        # Critical items only
+        critical_components = [c for c in data['bom_components'] 
+                            if c.test_priority == 'HIGH'][:10]
+        
+        # Summarize test points by type
+        test_point_summary = {
+            'power': len([tp for tp in data['test_points'] 
+                        if 'VCC' in tp.net_name or 'GND' in tp.net_name]),
+            'signal': len(data['test_points']) - 
+                    len([tp for tp in data['test_points'] 
+                        if 'VCC' in tp.net_name or 'GND' in tp.net_name])
+        }
+        
+        return {
+            'critical_components': critical_components,
+            'test_point_summary': test_point_summary
+        }
