@@ -1,194 +1,336 @@
-import sys
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QLabel, QPushButton, QLineEdit, 
-                             QTextEdit, QListWidget, QComboBox, QCheckBox,
-                             QMessageBox, QProgressBar)
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont, QIcon
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
+import os
+import json
+from typing import List, Dict, Any, Optional
+import threading
+from enum import Enum
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Aeronix Solution - Main Application")
-        self.setGeometry(100, 100, 800, 600)  # x, y, width, height
+# Import your modules
+try:
+    from parser_but_better import parse_inputs
+    import AI_model
+    IMPORTS_SUCCESS = True
+except ImportError as e:
+    print(f"Import error: {e}")
+    IMPORTS_SUCCESS = False
+    
+    # Mock classes for testing
+    class TestGenerationResult(Enum):
+        SUCCESS = "success"
+        ERROR = "error"
+        NO_DATA = "no_data"
+        API_ERROR = "api_error"
+
+    class TestGenerationStatus:
+        def __init__(self, result: TestGenerationResult, data: Optional[str] = None, error: Optional[str] = None):
+            self.result = result
+            self.data = data
+            self.error = error
+
+    def parse_inputs(files):
+        return {"bom_components": [], "test_points": [], "requirements": {}}
+    
+    def detect_file_type(path, content):
+        return "UNKNOWN"
+    
+    def get_LORA_test(bom, tp, req):
+        return TestGenerationStatus(TestGenerationResult.SUCCESS, "Mock LoRa test result")
+    
+    def get_arduino_test(bom, tp):
+        return TestGenerationStatus(TestGenerationResult.SUCCESS, "Mock Arduino test result")
+
+class TestGeneratorUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Aeronix Test Generator")
+        self.root.geometry("1200x800")
         
-        # Set up central widget and main layout
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout()
-        central_widget.setLayout(main_layout)
+        # Data storage
+        self.loaded_files = []
+        self.parsed_data = {}
+        self.current_results = {}
         
-        # Title label
-        title_label = QLabel("Aeronix Solution Dashboard")
-        title_label.setFont(QFont("Arial", 18, QFont.Bold))
-        title_label.setAlignment(Qt.AlignCenter)
-        main_layout.addWidget(title_label)
+        self.setup_ui()
         
-        # Create tabs using widgets (simple alternative to QTabWidget)
-        self.setup_ui(main_layout)
+    def setup_ui(self):
+        # Create main container
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
         
-    def setup_ui(self, layout):
-        # Button section
-        button_layout = QHBoxLayout()
+        # Title
+        title_label = ttk.Label(main_frame, text="Aeronix Test Plan Generator", 
+                               font=("Arial", 16, "bold"))
+        title_label.pack(pady=(0, 20))
         
-        # Buttons for different actions
-        self.btn_add = QPushButton("Add Item")
-        self.btn_remove = QPushButton("Remove Item")
-        self.btn_process = QPushButton("Process Data")
-        self.btn_settings = QPushButton("Settings")
+        # File Loading Section
+        file_frame = ttk.LabelFrame(main_frame, text="File Management", padding="10")
+        file_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # Style buttons
-        buttons = [self.btn_add, self.btn_remove, self.btn_process, self.btn_settings]
-        for btn in buttons:
-            btn.setFixedHeight(40)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #4CAF50;
-                    color: white;
-                    border: none;
-                    border-radius: 5px;
-                    font-weight: bold;
+        # File buttons
+        button_frame = ttk.Frame(file_frame)
+        button_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Button(button_frame, text="Load Files", 
+                  command=self.load_files).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="Clear Files", 
+                  command=self.clear_files).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="Parse Files", 
+                  command=self.parse_files).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # File list
+        self.file_listbox = tk.Listbox(file_frame, height=6)
+        self.file_listbox.pack(fill=tk.X, pady=(0, 5))
+        
+        # Parsing info
+        self.parse_info_label = ttk.Label(file_frame, text="No files parsed")
+        self.parse_info_label.pack()
+        
+        # Test Generation Section
+        test_frame = ttk.LabelFrame(main_frame, text="Test Generation", padding="10")
+        test_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Generation buttons
+        gen_button_frame = ttk.Frame(test_frame)
+        gen_button_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Button(gen_button_frame, text="Generate LoRa Test", 
+                  command=self.generate_lora_test).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(gen_button_frame, text="Generate Arduino Test", 
+                  command=self.generate_arduino_test).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(gen_button_frame, text="Export Results", 
+                  command=self.export_results).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Results display
+        results_notebook = ttk.Notebook(test_frame)
+        results_notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # LoRa results tab
+        self.lora_tab = ttk.Frame(results_notebook)
+        results_notebook.add(self.lora_tab, text="LoRa Test")
+        self.lora_text = scrolledtext.ScrolledText(self.lora_tab, height=15, width=100)
+        self.lora_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Arduino results tab
+        self.arduino_tab = ttk.Frame(results_notebook)
+        results_notebook.add(self.arduino_tab, text="Arduino Test")
+        self.arduino_text = scrolledtext.ScrolledText(self.arduino_tab, height=15, width=100)
+        self.arduino_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Status bar
+        self.status_var = tk.StringVar(value="Ready")
+        status_bar = ttk.Label(main_frame, textvariable=self.status_var, relief=tk.SUNKEN)
+        status_bar.pack(fill=tk.X)
+        
+        # Show import status
+        if not IMPORTS_SUCCESS:
+            self.update_status("Warning: Some imports failed - using mock functions")
+    
+    def update_status(self, message):
+        """Update status bar"""
+        self.status_var.set(message)
+        self.root.update_idletasks()
+    
+    def load_files(self):
+        """Load files for processing"""
+        try:
+            files = filedialog.askopenfilenames(
+                title="Select files to process",
+                filetypes=[
+                    ("All supported", "*.ipc *.csv *.txt *.json *.xml *.sch *.docx *.md"),
+                    ("CSV files", "*.csv"),
+                    ("IPC files", "*.ipc"),
+                    ("Text files", "*.txt"),
+                    ("JSON files", "*.json"),
+                    ("All files", "*.*")
+                ]
+            )
+            
+            if files:
+                self.loaded_files = list(files)
+                self.update_file_list()
+                self.update_status(f"Loaded {len(files)} files")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load files: {str(e)}")
+            self.update_status("Error loading files")
+    
+    def clear_files(self):
+        """Clear loaded files"""
+        self.loaded_files = []
+        self.parsed_data = {}
+        self.update_file_list()
+        self.parse_info_label.config(text="No files parsed")
+        self.update_status("Files cleared")
+    
+    def update_file_list(self):
+        """Update the file listbox"""
+        self.file_listbox.delete(0, tk.END)
+        for file_path in self.loaded_files:
+            filename = os.path.basename(file_path)
+            self.file_listbox.insert(tk.END, filename)
+    
+    def parse_files(self):
+        """Parse loaded files"""
+        if not self.loaded_files:
+            messagebox.showwarning("No Files", "Please load files first")
+            return
+        
+        try:
+            self.update_status("Parsing files...")
+            
+            # Prepare files for parsing
+            files_for_parsing = []
+            for file_path in self.loaded_files:
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                    
+                    files_for_parsing.append({
+                        'path': file_path,
+                        'content': content
+                    })
+                except Exception as e:
+                    print(f"Error reading {file_path}: {e}")
+            
+            if files_for_parsing:
+                self.parsed_data = parse_inputs(files_for_parsing)
+                
+                # Update info display
+                bom_count = len(self.parsed_data.get('bom_components', []))
+                tp_count = len(self.parsed_data.get('test_points', []))
+                
+                info_text = f"Parsed: {bom_count} BOM components, {tp_count} test points"
+                self.parse_info_label.config(text=info_text)
+                self.update_status("Files parsed successfully")
+            else:
+                raise ValueError("No files could be read")
+                
+        except Exception as e:
+            messagebox.showerror("Parse Error", f"Failed to parse files: {str(e)}")
+            self.update_status("Parse error")
+    
+    def generate_lora_test(self):
+        """Generate LoRa test plan"""
+        if not self.parsed_data:
+            messagebox.showwarning("No Data", "Please parse files first")
+            return
+        
+        def generate():
+            try:
+                self.update_status("Generating LoRa test...")
+                
+                bom_components = self.parsed_data.get('bom_components', [])
+                test_points = self.parsed_data.get('test_points', [])
+                requirements = self.parsed_data.get('requirements', {})
+                
+                result = get_LORA_test(bom_components, test_points, requirements)
+                
+                if result.result == TestGenerationResult.SUCCESS:
+                    self.current_results['lora'] = result.data
+                    self.lora_text.delete(1.0, tk.END)
+                    self.lora_text.insert(1.0, result.data)
+                    self.update_status("LoRa test generated successfully")
+                else:
+                    error_msg = result.error or "Unknown error"
+                    messagebox.showerror("Generation Error", f"LoRa test generation failed: {error_msg}")
+                    self.update_status("LoRa test generation failed")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"LoRa test generation error: {str(e)}")
+                self.update_status("LoRa test generation error")
+        
+        # Run in thread to avoid blocking UI
+        thread = threading.Thread(target=generate)
+        thread.daemon = True
+        thread.start()
+    
+    def generate_arduino_test(self):
+        """Generate Arduino test plan"""
+        if not self.parsed_data:
+            messagebox.showwarning("No Data", "Please parse files first")
+            return
+        
+        def generate():
+            try:
+                self.update_status("Generating Arduino test...")
+                
+                bom_components = self.parsed_data.get('bom_components', [])
+                test_points = self.parsed_data.get('test_points', [])
+                
+                result = get_arduino_test(bom_components, test_points)
+                
+                if result.result == TestGenerationResult.SUCCESS:
+                    self.current_results['arduino'] = result.data
+                    self.arduino_text.delete(1.0, tk.END)
+                    self.arduino_text.insert(1.0, result.data)
+                    self.update_status("Arduino test generated successfully")
+                else:
+                    error_msg = result.error or "Unknown error"
+                    messagebox.showerror("Generation Error", f"Arduino test generation failed: {error_msg}")
+                    self.update_status("Arduino test generation failed")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Arduino test generation error: {str(e)}")
+                self.update_status("Arduino test generation error")
+        
+        # Run in thread to avoid blocking UI
+        thread = threading.Thread(target=generate)
+        thread.daemon = True
+        thread.start()
+    
+    def export_results(self):
+        """Export generated test results"""
+        if not self.current_results:
+            messagebox.showwarning("No Results", "Please generate some tests first")
+            return
+        
+        try:
+            filename = filedialog.asksaveasfilename(
+                title="Export test results",
+                defaultextension=".json",
+                filetypes=[
+                    ("JSON files", "*.json"),
+                    ("Text files", "*.txt"),
+                    ("All files", "*.*")
+                ]
+            )
+            
+            if filename:
+                export_data = {
+                    'generated_tests': self.current_results,
+                    'parsed_data_summary': {
+                        'bom_components': len(self.parsed_data.get('bom_components', [])),
+                        'test_points': len(self.parsed_data.get('test_points', [])),
+                        'files_processed': len(self.loaded_files)
+                    }
                 }
-                QPushButton:hover {
-                    background-color: #45a049;
-                }
-                QPushButton:pressed {
-                    background-color: #3d8b40;
-                }
-            """)
-        
-        button_layout.addWidget(self.btn_add)
-        button_layout.addWidget(self.btn_remove)
-        button_layout.addWidget(self.btn_process)
-        button_layout.addWidget(self.btn_settings)
-        
-        layout.addLayout(button_layout)
-        
-        # Input section
-        input_layout = QHBoxLayout()
-        
-        self.text_input = QLineEdit()
-        self.text_input.setPlaceholderText("Enter text here...")
-        self.text_input.setFixedHeight(35)
-        
-        self.combo_box = QComboBox()
-        self.combo_box.addItems(["Option 1", "Option 2", "Option 3", "Option 4"])
-        
-        input_layout.addWidget(QLabel("Input:"))
-        input_layout.addWidget(self.text_input)
-        input_layout.addWidget(QLabel("Options:"))
-        input_layout.addWidget(self.combo_box)
-        
-        layout.addLayout(input_layout)
-        
-        # List section
-        list_layout = QHBoxLayout()
-        
-        # Left list
-        self.left_list = QListWidget()
-        self.left_list.addItems(["Item 1", "Item 2", "Item 3", "Item 4", "Item 5"])
-        
-        # Right list
-        self.right_list = QListWidget()
-        
-        # List buttons
-        list_buttons_layout = QVBoxLayout()
-        self.btn_move_right = QPushButton(">")
-        self.btn_move_left = QPushButton("<")
-        
-        list_buttons_layout.addWidget(self.btn_move_right)
-        list_buttons_layout.addWidget(self.btn_move_left)
-        list_buttons_layout.addStretch()
-        
-        list_layout.addWidget(QLabel("Available Items:"))
-        list_layout.addWidget(self.left_list)
-        list_layout.addLayout(list_buttons_layout)
-        list_layout.addWidget(QLabel("Selected Items:"))
-        list_layout.addWidget(self.right_list)
-        
-        layout.addLayout(list_layout)
-        
-        # Progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        layout.addWidget(self.progress_bar)
-        
-        # Status label
-        self.status_label = QLabel("Ready")
-        self.status_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.status_label)
-        
-        # Connect signals to slots
-        self.connect_signals()
-    
-    def connect_signals(self):
-        """Connect button clicks to methods"""
-        self.btn_add.clicked.connect(self.add_item)
-        self.btn_remove.clicked.connect(self.remove_item)
-        self.btn_process.clicked.connect(self.process_data)
-        self.btn_settings.clicked.connect(self.show_settings)
-        self.btn_move_right.clicked.connect(self.move_right)
-        self.btn_move_left.clicked.connect(self.move_left)
-    
-    def add_item(self):
-        text = self.text_input.text().strip()
-        if text:
-            self.left_list.addItem(text)
-            self.text_input.clear()
-            self.status_label.setText(f"Added: {text}")
-    
-    def remove_item(self):
-        current_row = self.left_list.currentRow()
-        if current_row >= 0:
-            item = self.left_list.takeItem(current_row)
-            self.status_label.setText(f"Removed: {item.text()}")
-    
-    def process_data(self):
-        self.status_label.setText("Processing data...")
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setValue(0)
-        
-        # Simulate processing with a timer
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_progress)
-        self.timer.start(100)  # Update every 100ms
-    
-    def update_progress(self):
-        current_value = self.progress_bar.value()
-        if current_value >= 100:
-            self.timer.stop()
-            self.progress_bar.setVisible(False)
-            self.status_label.setText("Processing complete!")
-            QMessageBox.information(self, "Complete", "Data processing finished successfully!")
-        else:
-            self.progress_bar.setValue(current_value + 5)
-    
-    def show_settings(self):
-        QMessageBox.information(self, "Settings", "Settings dialog would open here")
-    
-    def move_right(self):
-        current_item = self.left_list.currentItem()
-        if current_item:
-            self.right_list.addItem(current_item.text())
-            self.left_list.takeItem(self.left_list.currentRow())
-    
-    def move_left(self):
-        current_item = self.right_list.currentItem()
-        if current_item:
-            self.left_list.addItem(current_item.text())
-            self.right_list.takeItem(self.right_list.currentRow())
+                
+                with open(filename, 'w') as f:
+                    if filename.endswith('.json'):
+                        json.dump(export_data, f, indent=2)
+                    else:
+                        f.write(str(export_data))
+                
+                self.update_status(f"Results exported to {os.path.basename(filename)}")
+                messagebox.showinfo("Export Complete", f"Results exported to {filename}")
+                
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export results: {str(e)}")
+            self.update_status("Export failed")
 
 def main():
-    app = QApplication(sys.argv)
+    """Main function to run the application"""
+    # Create output directory if it doesn't exist
+    os.makedirs("output", exist_ok=True)
     
-    # Set application properties
-    app.setApplicationName("Aeronix Solution")
-    app.setApplicationVersion("1.0")
+    root = tk.Tk()
+    app = TestGeneratorUI(root)
     
-    window = MainWindow()
-    window.show()
-    
-    sys.exit(app.exec_())
+    try:
+        root.mainloop()
+    except KeyboardInterrupt:
+        print("Application closed by user")
 
 if __name__ == "__main__":
     main()
