@@ -10,6 +10,7 @@ from AI_model import TestGenerator
 # Import your modules
 try:
     from parser_but_better import parse_inputs
+    from format_output import format_test_output
     import AI_model
     IMPORTS_SUCCESS = True
 except ImportError as e:
@@ -101,6 +102,8 @@ class TestGeneratorUI:
                   command=self.generate_arduino_test).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(gen_button_frame, text="Export Results", 
                   command=self.export_results).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(gen_button_frame, text="Create Document", 
+                  command=self.create_professional_doc).pack(side=tk.LEFT, padx=(0, 5))
         
         # Results display
         results_notebook = ttk.Notebook(test_frame)
@@ -370,6 +373,27 @@ class TestGeneratorUI:
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export results: {str(e)}")
             self.update_status("Export failed")
+    
+    def create_professional_doc(self):
+        """Create professional Word document"""
+        if not self.current_results:
+            messagebox.showwarning("No Results", "Please generate some tests first")
+            return
+        
+        try:
+            device_type = "LoRa Car Radio" if 'lora' in self.current_results else "Arduino"
+            test_data = self.current_results.get('lora') or self.current_results.get('arduino')
+            
+            if test_data:
+                filename = format_test_output(test_data, device_type)
+                self.update_status(f"Professional document created: {os.path.basename(filename)}")
+                messagebox.showinfo("Document Created", f"Professional document saved:\n{filename}")
+            else:
+                messagebox.showerror("Error", "No test data available")
+                
+        except Exception as e:
+            messagebox.showerror("Document Error", f"Failed to create document: {str(e)}")
+            self.update_status("Document creation failed")
 
 def main():
     """Main function to run the application"""

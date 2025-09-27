@@ -1,0 +1,8 @@
+openai
+pinecone-client
+sentence-transformers
+pydantic
+openpyxl
+PyPDF2
+python-dotenv
+python-docx
