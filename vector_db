@@ -1,0 +1,112 @@
+# vector_db.py
+import pinecone
+from sentence_transformers import SentenceTransformer
+from typing import List, Dict, Any, Optional
+import os
+import hashlib
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class PineconeTestManager:
+    def __init__(self):
+        self.api_key = os.getenv("pcsk_3VAXxT_AiYUVSBaF2otdEdTBNFqjSV3e4QqxJYZAXS3xSxpjkz7fr5KoUm3irDwFhiFyrs") 
+        self.environment = os.getenv("PINECONE_ENVIRONMENT", "us-east4-gcp")
+        self.index_name = "aeronix-test-plans"
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')  
+        
+        if not self.api_key:
+            raise ValueError("PINECONE_API_KEY not found in environment variables")
+        
+        # Initialize Pinecone
+        pinecone.init(api_key=self.api_key, environment=self.environment)
+        self.setup_index()
+
+    def setup_index(self):
+        """Create or connect to Pinecone index"""
+        if self.index_name not in pinecone.list_indexes():
+            # Create new index
+            pinecone.create_index(
+                name=self.index_name,
+                dimension=384,  # all-MiniLM-L6-v2 output dimension
+                metric="cosine"
+            )
+        
+        self.index = pinecone.Index(self.index_name)  # ✅ FIXED: Correct capitalization
+
+    def generate_embedding(self, text: str) -> List[float]:  # ✅ FIXED: Correct type hint
+        """Generate vector embedding for text"""
+        return self.model.encode(text).tolist()  # ✅ FIXED: Correct method name
+
+    def store_test_plan(self, test_plan: Dict, metadata: Dict = None) -> str:
+        """Store a test plan in Pinecone"""
+        if metadata is None:
+            metadata = {}
+        
+        # Combine test plan content for embedding
+        content = f"""
+        Title: {test_plan.get('title', '')}
+        Device: {test_plan.get('target_device', '')}
+        Steps: {len(test_plan.get('test_steps', []))}
+        Overview: {test_plan.get('overview', '')}
+        """
+        
+        # Add test steps details
+        for i, step in enumerate(test_plan.get('test_steps', [])):
+            content += f"Step {i}: {step.get('title', '')} - {step.get('description', '')} "
+        
+        # Generate embedding
+        vector = self.generate_embedding(content)
+        
+        # Create unique ID
+        plan_id = hashlib.md5(content.encode()).hexdigest()
+        
+        # Prepare metadata
+        metadata.update({
+            'title': test_plan.get('title', ''),
+            'device': test_plan.get('target_device', ''),
+            'step_count': len(test_plan.get('test_steps', [])),
+            'type': test_plan.get('type', 'unknown')
+        })
+        
+        # Store in Pinecone
+        self.index.upsert([(plan_id, vector, metadata)])
+        return plan_id
+
+    def search_similar_tests(self, query: str, top_k: int = 5) -> List[Dict]:
+        """Search for similar test plans"""
+        query_vector = self.generate_embedding(query)
+        
+        results = self.index.query(
+            vector=query_vector,
+            top_k=top_k,
+            include_metadata=True
+        )
+        
+        return [
+            {
+                'id': match.id,
+                'score': match.score,
+                'metadata': match.metadata,
+                'title': match.metadata.get('title', ''),
+                'device': match.metadata.get('device', ''),
+                'step_count': match.metadata.get('step_count', 0)
+            }
+            for match in results.matches
+        ]
+
+# ✅ Add this to test if your Pinecone connection works
+def test_pinecone_connection():
+    """Test function to verify Pinecone setup"""
+    try:
+        manager = PineconeTestManager()
+        print("✅ Pinecone connection successful!")
+        print(f"✅ Index: {manager.index_name}")
+        print(f"✅ Model: {manager.model}")
+        return True
+    except Exception as e:
+        print(f"❌ Pinecone connection failed: {e}")
+        return False
+
+if __name__ == "__main__":
+    test_pinecone_connection()
