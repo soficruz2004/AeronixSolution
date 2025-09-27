@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Aeronix AI Test Plan Generator
 Automatically generates comprehensive test procedures for LoRa train car radios
