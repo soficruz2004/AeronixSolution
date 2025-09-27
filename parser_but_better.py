@@ -1,6 +1,6 @@
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
-from pydantic import BaseModel, validator
+from pydantic import BaseModel
 import csv, re, json
 
 @dataclass
@@ -28,15 +28,31 @@ class PCBDataModel(BaseModel):
     netlist: Dict
 
 class BOMParser:
-    """Enhanced BOM parser supporting multiple formats"""
-    
+    def _parse_text_bom(self,content:str):
+        components = []
+        lines = content.strip().split('\n')
+        for line in lines:
+            if line.strip().startswith('#') or line.strip() == '': continue
+            parts = line.split()
+            if len(parts) >= 4:
+                comp = Component(
+                    designator=parts[0].strip(),
+                    part_number=parts[1].strip() if len(parts) > 1 else "",
+                    footprint=parts[2].strip() if len(parts) > 2 else "",
+                    quantity=int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 1,
+                    description=parts[4].strip() if len(parts) > 4 else "",
+                    test_priority=self._assess_component_priority(parts[0], parts[1] if len(parts) > 1 else "")
+                )
+                components.append(comp)
+        return components
+    def _parse_xml_bom(self,content:str):
+        assert False and "Please implement ASAP"
+        return []
+        
     def parse(self, content: str) -> List[Component]:
-        if content.strip().startswith('<?xml'):
-            return self._parse_xml_bom(content)
-        elif '\t' in content or ',' in content:
-            return self._parse_csv_bom(content)
-        else:
-            return self._parse_text_bom(content)
+        if content.strip().startswith('<?xml'): return self._parse_xml_bom(content)
+        elif '\t' in content or ',' in content: return self._parse_csv_bom(content)
+        else: return self._parse_text_bom(content)
     
     def _parse_csv_bom(self, content: str) -> List[Component]:
         components = []
@@ -44,7 +60,7 @@ class BOMParser:
         delimiter = '\t' if '\t' in content else ','
         
         reader = csv.reader(lines, delimiter=delimiter)
-        headers = next(reader, [])
+        _ = next(reader, [])
         
         for row in reader:
             if len(row) >= 2 and row[0].strip():
@@ -60,21 +76,47 @@ class BOMParser:
         return components
     
     def _assess_component_priority(self, designator: str, part_number: str) -> str:
-        """AI-based component test priority assessment"""
         critical_patterns = ['POWER', 'RF', 'CRYSTAL', 'CPU', 'MCU', 'LORA']
         high_priority_refs = ['U', 'IC', 'Q', 'T']
         
-        if any(pattern in part_number.upper() for pattern in critical_patterns):
-            return "HIGH"
-        elif designator[0] in high_priority_refs:
-            return "HIGH"
-        elif designator[0] in ['R', 'C', 'L']:
-            return "MEDIUM"
+        if any(pattern in part_number.upper() for pattern in critical_patterns): return "HIGH"
+        elif designator[0] in high_priority_refs: return "HIGH"
+        elif designator[0] in ['R', 'C', 'L']: return "MEDIUM"
         return "LOW"
 
 class CoordinateParser:
-    """Parse test point coordinates from multiple formats"""
+    def _parse_generic_format(self, content: str) -> List[TestPoint]:
+        test_points = []
+        for line in content.strip().split('\n'):
+            if line.startswith('X='):
+                parts = line.split()
+                if len(parts) >= 4:
+                    tp = TestPoint(
+                        net_name=parts[0][2:],
+                        component_ref=parts[1],
+                        x_coord=float(parts[2]),
+                        y_coord=float(parts[3]),
+                        rotation=float(parts[4]) if len(parts) > 4 else 0.0
+                    )
+                    test_points.append(tp)
+        return test_points
     
+    def _parse_xy_format(self, content: str) -> List[TestPoint]:
+        test_points = []
+        for line in content.strip().split('\n'):
+            if line.startswith('X='):
+                parts = line.split()
+                if len(parts) >= 4:
+                    tp = TestPoint(
+                        net_name=parts[0][2:],
+                        component_ref=parts[1],
+                        x_coord=float(parts[2]),
+                        y_coord=float(parts[3]),
+                        rotation=float(parts[4]) if len(parts) > 4 else 0.0
+                    )
+                    test_points.append(tp)
+        return test_points
+
     def parse(self, content: str) -> List[TestPoint]:
         if content.strip().startswith('D0'):
             return self._parse_ipc_format(content)
@@ -84,7 +126,6 @@ class CoordinateParser:
             return self._parse_generic_format(content)
     
     def _parse_ipc_format(self, content: str) -> List[TestPoint]:
-        """Parse IPC-356 netlist format"""
         test_points = []
         for line in content.strip().split('\n'):
             if line.startswith('317') or line.startswith('327'):
@@ -93,7 +134,7 @@ class CoordinateParser:
                     coords = self._extract_coordinates(parts[2])
                     if coords:
                         tp = TestPoint(
-                            net_name=parts[0][3:],  # Remove '317' prefix
+                            net_name=parts[0][3:], # DNI 317/327
                             component_ref=parts[1],
                             x_coord=coords[0],
                             y_coord=coords[1],
@@ -103,7 +144,6 @@ class CoordinateParser:
         return test_points
     
     def _extract_coordinates(self, coord_string: str) -> Optional[tuple]:
-        """Extract X,Y coordinates from coordinate string"""
         x_match = re.search(r'X([+-]?\d+)', coord_string)
         y_match = re.search(r'Y([+-]?\d+)', coord_string)
         r_match = re.search(r'R(\d+)', coord_string)
@@ -116,8 +156,6 @@ class CoordinateParser:
         return None
 
 class SchematicParser:
-    """Parse schematic files and extract circuit information"""
-    
     def parse(self, content: str) -> Dict:
         if content.strip().startswith('<?xml'):
             return self._parse_xml_schematic(content)
@@ -125,7 +163,6 @@ class SchematicParser:
             return self._parse_text_netlist(content)
     
     def _parse_text_netlist(self, content: str) -> Dict:
-        """Parse text-based netlist"""
         nets = {}
         components = {}
         
@@ -145,6 +182,9 @@ class SchematicParser:
             'connections': self._build_connection_matrix(nets, components)
         }
     
+    def _parse_xml_schematic(self, content: str) -> Dict:
+        assert False and "Please implement ASAP"
+        
     def _parse_net_line(self, line: str) -> Optional[Dict]:
         parts = line.split()
         if len(parts) >= 2:
@@ -158,11 +198,10 @@ class SchematicParser:
         return None
     
     def _build_connection_matrix(self, nets: Dict, components: Dict) -> Dict:
+        assert False and "Please implement ASAP"
         return {'matrix': 'placeholder'}
 
 class RequirementsParser:
-    """Parse requirements documents"""
-    
     def parse(self, content: str) -> Dict:
         if content.strip().startswith('{'):
             return json.loads(content)
@@ -196,10 +235,8 @@ class RequirementsParser:
         return requirements
 
 def detect_file_type(filepath: str, content: str = "") -> str:
-    """Intelligent file type detection"""
     ext = filepath.lower().split('.')[-1]
-    
-    # Extension-based detection
+
     if ext in ['csv', 'tsv']:
         return "BOM"
     elif ext in ['ipc', 'net']:
@@ -212,7 +249,6 @@ def detect_file_type(filepath: str, content: str = "") -> str:
         elif any(keyword in content.upper() for keyword in ['NET', 'COMPONENT', 'CONN']):
             return "NETLIST"
     
-    # Content-based detection
     if content:
         if 'designator' in content.lower() or 'part' in content.lower():
             return "BOM"
@@ -224,7 +260,6 @@ def detect_file_type(filepath: str, content: str = "") -> str:
     return "UNKNOWN"
 
 def parse_inputs(files: List[Dict]) -> Dict[str, Any]:
-    """Enhanced multi-format parser with validation"""
     parsed_data = {
         'bom_components': [],
         'test_points': [],
@@ -238,7 +273,6 @@ def parse_inputs(files: List[Dict]) -> Dict[str, Any]:
         }
     }
     
-    # Initialize parsers
     parsers = {
         'BOM': BOMParser(),
         'NETLIST': CoordinateParser(),
@@ -272,19 +306,16 @@ def parse_inputs(files: List[Dict]) -> Dict[str, Any]:
             }
             parsed_data['metadata']['parsing_errors'].append(error_info)
     
-    # Post-processing: Link components to test points
     parsed_data = _link_components_to_testpoints(parsed_data)
     
-    # Validate with Pydantic
     try:
         validated_data = PCBDataModel(**parsed_data)
-        return validated_data.dict()
+        return validated_data.model_dump()
     except Exception as e:
         parsed_data['metadata']['validation_errors'] = [str(e)]
         return parsed_data
 
 def _link_components_to_testpoints(data: Dict) -> Dict:
-    """Create relationships between components and test points"""
     component_map = {comp.designator: comp for comp in data['bom_components']}
     
     for tp in data['test_points']:
